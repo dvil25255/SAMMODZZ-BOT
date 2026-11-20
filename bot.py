@@ -272,3 +272,67 @@ def start(msg):
 if __name__ == "__main__":
     print("Bot starting...")
     bot.infinity_polling()
+
+
+def get_key_system():
+    return '''
+-- ============================================================
+-- SUPABASE ONLINE KEY SYSTEM (Auto-Injected)
+-- ============================================================
+_G.LunarLoginRuntime = _G.LunarLoginRuntime or {}
+_G.LunarLoginRuntime.Authorized = false
+_G.LunarLoginRuntime.Status = "Enter Key"
+
+function _G.MasterLicenseLogin(entered_key)
+    local http = nil
+    pcall(function()
+        local MM = require("client.module_framework.ModuleManager")
+        http = MM.GetModule(MM.CommonModuleConfig.http_manager)
+    end)
+    
+    if not http then 
+        _G.LunarLoginRuntime.Status = "HTTP Module not found"
+        return false 
+    end
+    
+    _G.LunarLoginRuntime.Status = "Checking key..."
+    local url = "YOUR_SUPABASE_URL/rest/v1/keys?key=eq." .. entered_key .. "&select=*"
+    
+    http:Get(url, {
+        ["apikey"] = "YOUR_SUPABASE_KEY",
+        ["Authorization"] = "Bearer YOUR_SUPABASE_KEY"
+    }, function(success, response)
+        if success and response then
+            local json = require("common.json_util")
+            local data = json.decode(response)
+            if data and #data > 0 then
+                local row = data[1]
+                if row.is_used == false or row.is_used == nil then
+                    _G.LunarLoginRuntime.Authorized = true
+                    _G.LunarLoginRuntime.Status = "Login Success! Welcome VIP."
+                    
+                    local patch_url = "YOUR_SUPABASE_URL/rest/v1/keys?key=eq." .. entered_key
+                    http:Patch(patch_url, {
+                        ["apikey"] = "YOUR_SUPABASE_KEY",
+                        ["Authorization"] = "Bearer YOUR_SUPABASE_KEY",
+                        ["Content-Type"] = "application/json",
+                        ["Prefer"] = "return=minimal"
+                    }, '{"is_used": true}', function(p_success, p_resp) end, 10)
+                    
+                else
+                    _G.LunarLoginRuntime.Status = "Key already used!"
+                end
+            else
+                _G.LunarLoginRuntime.Status = "Invalid Key!"
+            end
+        else
+            _G.LunarLoginRuntime.Status = "Connection failed"
+        end
+    end, 10)
+end
+
+function _G.MasterLicenseLogout()
+    _G.LunarLoginRuntime.Authorized = false
+    _G.LunarLoginRuntime.Status = "Logged out"
+end
+'''
