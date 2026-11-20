@@ -149,11 +149,29 @@ end
     return lua
 
 # ============================================================
-# ADMIN PANEL & COMMANDS
+# PREMIUM UI & COMMANDS
 # ============================================================
+@bot.message_handler(commands=['start'])
+def start(msg):
+    if not is_admin(msg): return
+    
+    ui_text = (
+        "🌟 <b>SAMMODZZ CYBER BOT v16.0</b> 🌟\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "🟢 <b>Status:</b> Online\n"
+        "⚡ <b>Engine:</b> Supabase + Lua\n\n"
+        "📥 <b>Kaise use karein?</b>\n"
+        "👉 Koi bhi <code>.lua</code> file bhejein.\n"
+        "👉 Bot aapko features dikhayega.\n"
+        "👉 Select karein aur Build dabayein!\n\n"
+        "🛠️ <i>Admin Panel ke liye /admin likhein.</i>"
+    )
+    bot.send_message(msg.chat.id, ui_text, parse_mode="HTML")
+
 @bot.message_handler(commands=['admin'])
 def admin_panel(msg):
     if not is_admin(msg): return
+    
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(
         types.InlineKeyboardButton("🔑 Generate Key", callback_data="admin_gen"),
@@ -165,7 +183,13 @@ def admin_panel(msg):
     )
     markup.add(types.InlineKeyboardButton("📊 System Stats", callback_data="admin_stats"))
     
-    bot.send_message(msg.chat.id, "👑 <b>ADMIN CONTROL PANEL</b>\n\nChunein ki aapko kya karna hai:", parse_mode="HTML", reply_markup=markup)
+    ui_text = (
+        "👑 <b>ADMIN CONTROL PANEL</b> 👑\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "Yahan se aap apne bot ko manage kar sakte hain.\n\n"
+        "🔽 <i>Neeche diye gaye options me se chunein:</i>"
+    )
+    bot.send_message(msg.chat.id, ui_text, parse_mode="HTML", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("admin_"))
 def handle_admin_callbacks(call):
@@ -177,7 +201,7 @@ def handle_admin_callbacks(call):
         try:
             new_key = f"SAMMODZZ-VIP-{''.join(random.choices(string.ascii_uppercase + string.digits, k=8))}"
             supabase.table('keys').insert({"key": new_key, "is_used": False}).execute()
-            bot.send_message(call.message.chat.id, f"✅ <b>Key Generated:</b>\n<code>{new_key}</code>", parse_mode="HTML")
+            bot.send_message(call.message.chat.id, f"✅ <b>Key Generated Successfully!</b>\n\n🔑 Key: <code>{new_key}</code>\n\nIs key ko user ko de dein.", parse_mode="HTML")
         except Exception as e:
             bot.send_message(call.message.chat.id, f"❌ Error: {e}")
 
@@ -199,7 +223,15 @@ def handle_admin_callbacks(call):
             total = len(res.data)
             used = len([k for k in res.data if k.get('is_used')])
             unused = total - used
-            bot.send_message(call.message.chat.id, f"📊 <b>System Stats</b>\n\nTotal Keys: {total}\nUsed: {used}\nAvailable: {unused}", parse_mode="HTML")
+            stats_text = (
+                "📊 <b>SYSTEM STATISTICS</b>\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                f"📦 <b>Total Keys:</b> {total}\n"
+                f"✅ <b>Used Keys:</b> {used}\n"
+                f"💎 <b>Available Keys:</b> {unused}\n"
+                "━━━━━━━━━━━━━━━━━━━━"
+            )
+            bot.send_message(call.message.chat.id, stats_text, parse_mode="HTML")
         except Exception as e:
             bot.send_message(call.message.chat.id, f"❌ Error: {e}")
 
@@ -221,7 +253,7 @@ def process_update_bypass(message):
         downloaded = bot.download_file(file_info.file_path)
         with open(BYPASS_DIR + "master_bypass.lua", "wb") as f: f.write(downloaded)
         upload_to_supabase(BYPASS_DIR + "master_bypass.lua", "master_bypass.lua")
-        bot.reply_to(message, "✅ Bypass successfully update ho gaya!")
+        bot.reply_to(message, "✅ <b>Bypass successfully update ho gaya!</b>", parse_mode="HTML")
     except Exception as e:
         bot.reply_to(message, f"❌ Error: {e}")
 
@@ -233,18 +265,13 @@ def process_update_offset(message):
         filename = message.document.file_name
         with open(OFFSETS + filename, "wb") as f: f.write(downloaded)
         upload_to_supabase(OFFSETS + filename, filename)
-        bot.reply_to(message, "✅ Offsets successfully update ho gaye!")
+        bot.reply_to(message, "✅ <b>Offsets successfully update ho gaye!</b>", parse_mode="HTML")
     except Exception as e:
         bot.reply_to(message, f"❌ Error: {e}")
 
 # ============================================================
 # MAIN FLOW: FILE UPLOAD & BUILD
 # ============================================================
-@bot.message_handler(commands=['start'])
-def start(msg):
-    if not is_admin(msg): return
-    bot.send_message(msg.chat.id, "✅ Bot is Online. Send a .lua file to start. Type /admin for controls.")
-
 @bot.message_handler(content_types=['document'])
 def handle_doc(msg):
     if not is_admin(msg): return
@@ -276,7 +303,16 @@ def show_feature_menu(chat_id):
         icon = "✅" if is_on else "❌"
         markup.add(types.InlineKeyboardButton(f"{icon} {feat}", callback_data=f"toggle_{feat}"))
     markup.add(types.InlineKeyboardButton("🚀 Build File", callback_data="build_final"))
-    bot.send_message(chat_id, "🔍 <b>Features Detected!</b>\n\nChunein ki kya chahiye (ON) aur kya nahi (OFF):", parse_mode="HTML", reply_markup=markup)
+    
+    ui_text = (
+        "🔍 <b>FEATURE DETECTOR</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        f"📁 <b>File:</b> <code>{state['filename']}</code>\n\n"
+        "🤖 Bot ne yeh features dhoondhe hain:\n"
+        "✅ = ON | ❌ = OFF\n\n"
+        "👇 <i>Toggle karne ke liye click karein:</i>"
+    )
+    bot.send_message(chat_id, ui_text, parse_mode="HTML", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("toggle_"))
 def cb_toggle(call):
@@ -298,7 +334,16 @@ def cb_build_final(call):
     chat_id = call.message.chat.id
     if chat_id not in user_states: return
     bot.answer_callback_query(call.id)
-    bot.edit_message_text(chat_id=chat_id, message_id=call.message.message_id, text="⏳ File process ho rahi hai...")
+    
+    building_text = (
+        "⚙️ <b>BUILDING FILE...</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "🔄 Bypass inject ho raha hai...\n"
+        "🔑 Key System add ho raha hai...\n"
+        "⚡ Features apply ho rahe hain...\n\n"
+        "⏳ <i>Kripya pratiksha karein...</i>"
+    )
+    bot.edit_message_text(chat_id=chat_id, message_id=call.message.message_id, text=building_text, parse_mode="HTML")
     
     state = user_states[chat_id]
     try:
@@ -324,7 +369,15 @@ def cb_build_final(call):
             f.write(new_content)
             
         with open(final_path, 'rb') as f:
-            bot.send_document(chat_id, f, caption="✅ <b>Build Complete!</b>\nFeatures Applied & Supabase Key System Injected.", parse_mode="HTML")
+            caption = (
+                "✅ <b>BUILD COMPLETE!</b> ✅\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                f"📦 <b>File:</b> <code>Final_{state['filename']}</code>\n"
+                "🛡️ <b>Bypass:</b> Injected\n"
+                "🔑 <b>Key System:</b> Supabase Online\n\n"
+                "🚀 <i>Script ready to use!</i>"
+            )
+            bot.send_document(chat_id, f, caption=caption, parse_mode="HTML")
             
         upload_to_supabase(final_path, "Final_" + state['filename'])
     except Exception as e:
@@ -333,5 +386,5 @@ def cb_build_final(call):
     del user_states[chat_id]
 
 if __name__ == "__main__":
-    print("Bot starting...")
+    print("Bot starting with Premium UI...")
     bot.infinity_polling()
