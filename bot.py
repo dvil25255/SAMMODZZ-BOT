@@ -271,6 +271,29 @@ def cb_build_final(call):
 # ============================================================
 # START BOT
 # ============================================================
+
+@bot.message_handler(commands=['genkey'])
+def generate_key(message):
+    if not is_admin(message): return
+    try:
+        # Random key generate karo (jaise VIP-X8F9A2K1)
+        random_str = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+        new_key = f"SAMMODZZ-VIP-{random_str}"
+        
+        # Supabase me save karo
+        res = supabase.table('keys').insert({
+            "key": new_key,
+            "is_used": False
+        }).execute()
+        
+        if res.data:
+            bot.reply_to(message, f"✅ <b>Key Generated Successfully!</b>\n\n🔑 Key: <code>{new_key}</code>\n\nIs key ko user ko de dein.", parse_mode="HTML")
+        else:
+            bot.reply_to(message, "❌ Key save nahi hui. Check Supabase.")
+    except Exception as e:
+        bot.reply_to(message, f"❌ Error: {e}")
+
+
 if __name__ == "__main__":
     print("Bot starting...")
     bot.infinity_polling()
