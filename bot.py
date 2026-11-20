@@ -248,3 +248,4 @@ def start(msg):
 if __name__ == "__main__":
     print("Bot starting...")
     bot.infinity_polling()
+# Updated Build Logic
