@@ -120,7 +120,7 @@ do
 end
 -- ============================================================
 """
-    content = content:gsub('@Masterpiece2025', branding):gsub('MASTERAHSANYT', branding)
+    content = content.replace('@Masterpiece2025', branding).replace('MASTERAHSANYT', branding)
     return auth_code + "\n" + content, len(offsets_table)
 
 # ============================================================
