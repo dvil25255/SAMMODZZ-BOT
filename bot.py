@@ -7,14 +7,17 @@ from supabase import create_client, Client
 # ============================================================
 # SAMMODZZ ULTIMATE BOT v16.0 (Real Bypass Injector + Auth)
 # ============================================================
-BOT_TOKEN = "YOUR_TELEGRAM_TOKEN"     # <--- Apna Token Daalo
-ADMIN_ID = 123456789                  # <--- Apna Telegram ID Daalo
-SUPABASE_URL = "YOUR_SUPABASE_URL"    # <--- Supabase URL Daalo
-SUPABASE_KEY = "YOUR_ANON_KEY"        # <--- Supabase Anon Key Daalo
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_ID = int(os.getenv("ADMIN_ID", "123456789"))
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+if not BOT_TOKEN or not SUPABASE_URL or not SUPABASE_KEY:
+    raise ValueError("Missing Environment Variables! Please set BOT_TOKEN, SUPABASE_URL, and SUPABASE_KEY in Railway.")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-BASE = "/storage/emulated/0/SAMMODZZ/"
+BASE = "./SAMMODZZ/"
 SCRIPTS = BASE + "scripts/"
 OFFSETS = BASE + "offsets/"
 BACKUPS = BASE + "backups/"
