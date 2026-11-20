@@ -184,25 +184,22 @@ def handle_doc(msg):
             # Agar bypass file hai
             if "bypass" in filename.lower():
                 dest = BYPASS_DIR + "master_bypass.lua"
-                os.makedirs(os.path.dirname(dest), exist_ok=True)
-                os.makedirs(os.path.dirname(dest), exist_ok=True)
-                with open(dest, "wb") as f: f.write(downloaded)
                 return bot.reply_to(msg, "✅ <b>Master Bypass Saved!</b>\nAb har script is safe bypass ke saath build hogi.", parse_mode="HTML")
             
             # Agar normal script hai
             dest = SCRIPTS + "TEMP_" + filename
+            
             # User ki bypass choice check karo
             if user_states.get(msg.from_user.id, {}).get("use_bypass", True):
                 with open(dest, "r", encoding="utf-8") as f: content = f.read()
                 content = inject_safe_bypass(content)
-                os.makedirs(os.path.dirname(dest), exist_ok=True)
-                    os.makedirs(os.path.dirname(dest), exist_ok=True)
-                    with open(dest, "w", encoding="utf-8") as f: f.write(content)
-            os.makedirs(os.path.dirname(dest), exist_ok=True)
-                os.makedirs(os.path.dirname(dest), exist_ok=True)
-                with open(dest, "wb") as f: f.write(downloaded)
+                with open(dest, "w", encoding="utf-8") as f: f.write(content)
+            if user_states.get(msg.from_user.id, {}).get("use_bypass", True):
+                with open(dest, "r", encoding="utf-8") as f: content = f.read()
+                content = inject_safe_bypass(content)
+                with open(dest, "w", encoding="utf-8") as f: f.write(content)
+                
             user_states[msg.chat.id] = {"filepath": dest, "filename": filename}
-            
             markup = types.InlineKeyboardMarkup(row_width=3)
             markup.add(
                 types.InlineKeyboardButton("1 Day", callback_data="exp_1d"),
@@ -214,9 +211,6 @@ def handle_doc(msg):
             
         elif filename.endswith(".txt"):
             dest = OFFSETS + filename
-            os.makedirs(os.path.dirname(dest), exist_ok=True)
-                os.makedirs(os.path.dirname(dest), exist_ok=True)
-                with open(dest, "wb") as f: f.write(downloaded)
             bot.reply_to(msg, f"🎯 <b>Offsets Uploaded:</b> {filename}", parse_mode="HTML")
     except Exception as e: 
         bot.reply_to(msg, f"❌ Error: {e}")
@@ -302,21 +296,12 @@ def process_version(msg):
 def start(msg):
     if not is_admin(msg): return
     markup = types.InlineKeyboardMarkup(row_width=2)
-    markup.add(
-        types.InlineKeyboardButton("🎯 Offset Manager", callback_data="offset_menu"),
-        types.InlineKeyboardButton("🛡️ Bypass Info", callback_data="bypass_info"),
-        types.InlineKeyboardButton("🔨 Rebuild Mod", callback_data="build"),
-        types.InlineKeyboardButton("🎨 Aimbot Config", callback_data="aim_menu"),
-        types.InlineKeyboardButton("📥 Download Mods", callback_data="download_menu"),
-        types.InlineKeyboardButton("🔑 Key Stats", callback_data="stats")
-    )
     text = (
         "```\n╔══════════════════════════╗\n║ SAMMODZZ ULTIMATE v16.0  ║\n╚══════════════════════════╝\n```\n"
         f"🟢 ONLINE | 💾 Scripts: <code>{len(os.listdir(SCRIPTS))}</code>\n\n"
         "🔽 <b>Tools:</b>\n"
         "<i>Koi bhi .lua bhejo — Bot puchega details aur secure build karke dega.</i>\n"
         "<i>Bypass file (bypass.lua) bhejo — Bot har script me use lagayega.</i>"
-    )
     bot.send_message(msg.chat.id, text, parse_mode="Markdown", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda c: c.data == "bypass_info")
@@ -333,11 +318,6 @@ def cb_bypass_info(call):
 def cb_offset_menu(call):
     bot.answer_callback_query(call.id)
     markup = types.InlineKeyboardMarkup(row_width=2)
-    markup.add(
-        types.InlineKeyboardButton("📥 Add Offset", callback_data="off_add"),
-        types.InlineKeyboardButton("📋 View All", callback_data="off_view"),
-        types.InlineKeyboardButton("🔙 Back", callback_data="back")
-    )
     bot.send_message(call.message.chat.id, "🎯 <b>Offset Manager</b>", parse_mode="HTML", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda c: c.data == "off_add")
@@ -370,7 +350,7 @@ def cb_build(call):
     scripts = [f for f in os.listdir(SCRIPTS) if f.endswith(".lua") and not f.startswith("TEMP_")]
     if not scripts: return bot.send_message(call.message.chat.id, "❌ No scripts.")
     markup = types.InlineKeyboardMarkup(row_width=1)
-    for s in scripts: markup.add(types.InlineKeyboardButton(f"📜 {s}", callback_data=f"build_sel:{s}"))
+    for s in scripts:
     bot.send_message(call.message.chat.id, "🔨 <b>Select Script:</b>", parse_mode="HTML", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("build_sel:"))
@@ -398,62 +378,6 @@ def cb_aim_menu(call):
     scripts = [f for f in os.listdir(SCRIPTS) if f.endswith(".lua") and not f.startswith("TEMP_")]
     if not scripts: return bot.send_message(call.message.chat.id, "❌ No scripts.")
     markup = types.InlineKeyboardMarkup(row_width=1)
-    for s in scripts: markup.add(types.InlineKeyboardButton(f"📜 {s}", callback_data=f"aim_sel:{s}"))
-    bot.send_message(call.message.chat.id, "🎨 <b>Select Script:</b>", parse_mode="HTML", reply_markup=markup)
-
-@bot.callback_query_handler(func=lambda c: c.data.startswith("aim_sel:"))
-def cb_aim_sel(call):
-    bot.answer_callback_query(call.id)
-    script = call.data.split(":")[1]
-    markup = types.InlineKeyboardMarkup(row_width=2)
-    markup.add(
-        types.InlineKeyboardButton("🟢 ON/OFF", callback_data=f"set:{script}:AimEnabled"),
-        types.InlineKeyboardButton("📏 FOV", callback_data=f"set:{script}:AimFOV"),
-        types.InlineKeyboardButton("🎯 Target", callback_data=f"set:{script}:AimTarget"),
-        types.InlineKeyboardButton("🔒 Hard Aim", callback_data=f"set:{script}:HardAim")
-    )
-    bot.send_message(call.message.chat.id, f"🎯 <b>{script}</b>", parse_mode="HTML", reply_markup=markup)
-
-@bot.callback_query_handler(func=lambda c: c.data.startswith("set:"))
-def cb_set(call):
-    bot.answer_callback_query(call.id)
-    script, key = call.data.split(":")[1], call.data.split(":")[2]
-    msg = bot.send_message(call.message.chat.id, f"✍️ <b>{key}</b> value:")
-    bot.register_next_step_handler(msg, process_val, script, key)
-
-def process_val(msg, script, key):
-    with open(SCRIPTS + script, "r") as f: content = f.read()
-    pattern = rf'({re.escape(key)}\s*=\s*)(true|false|[0-9.]+|"[^"]+")'
-    if re.search(pattern, content):
-        content = re.sub(pattern, rf'\g<1>{msg.text}', content)
-        with open(SCRIPTS + script, "w") as f: f.write(content)
-        bot.reply_to(msg, "✅ Updated!")
-
-@bot.callback_query_handler(func=lambda c: c.data == "download_menu")
-def cb_dl_menu(call):
-    bot.answer_callback_query(call.id)
-    scripts = [f for f in os.listdir(SCRIPTS) if f.endswith(".lua") and not f.startswith("TEMP_")]
+    for s in scripts:
     markup = types.InlineKeyboardMarkup(row_width=1)
-    for s in scripts: markup.add(types.InlineKeyboardButton(f"📥 {s}", callback_data=f"dl:{s}"))
-    bot.send_message(call.message.chat.id, "📥 <b>Download:</b>", parse_mode="HTML", reply_markup=markup)
-
-@bot.callback_query_handler(func=lambda c: c.data.startswith("dl:"))
-def cb_dl(call):
-    bot.answer_callback_query(call.id)
-    fn = call.data.split(":")[1]
-    bot.send_document(call.message.chat.id, open(SCRIPTS + fn, "rb"), caption=f"📥 {fn}")
-
-@bot.callback_query_handler(func=lambda c: c.data == "stats")
-def cb_stats(call):
-    bot.answer_callback_query(call.id)
-    k = supabase.table('keys').select('*', count='exact').execute()
-    bot.send_message(call.message.chat.id, f"📊 Total Keys: {k.count}")
-
-@bot.callback_query_handler(func=lambda c: c.data == "back")
-def cb_back(call):
-    bot.answer_callback_query(call.id)
-    start(call.message)
-
-if __name__ == "__main__":
-    print("🤖 SAMMODZZ Ultimate v16.0 Online...")
-    bot.infinity_polling()
+    for s in scripts:
