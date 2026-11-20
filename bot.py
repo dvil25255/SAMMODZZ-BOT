@@ -174,9 +174,6 @@ def real_obfuscate(content):
 # ============================================================
 @bot.message_handler(content_types=['document'])
 def handle_doc(msg):
-    # User ki bypass choice check karo
-    if user_states.get(message.from_user.id, {}).get('use_bypass', True):
-        content = inject_safe_bypass(content)
     if not is_admin(msg): return
     try:
         file_info = bot.get_file(msg.document.file_id)
@@ -192,6 +189,11 @@ def handle_doc(msg):
             
             # Agar normal script hai
             dest = SCRIPTS + "TEMP_" + filename
+            # User ki bypass choice check karo
+            if user_states.get(msg.from_user.id, {}).get("use_bypass", True):
+                with open(dest, "r", encoding="utf-8") as f: content = f.read()
+                content = inject_safe_bypass(content)
+                with open(dest, "w", encoding="utf-8") as f: f.write(content)
             with open(dest, "wb") as f: f.write(downloaded)
             user_states[msg.chat.id] = {"filepath": dest, "filename": filename}
             
