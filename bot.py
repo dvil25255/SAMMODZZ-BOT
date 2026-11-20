@@ -124,7 +124,6 @@ function _G.MasterLicenseLogin(entered_key)
                     _G.LunarLoginRuntime.Authorized = true
                     _G.LunarLoginRuntime.Status = "Login Success! Welcome VIP."
                     
-                    -- Mark as used
                     local patch_url = "SUPABASE_URL_PLACEHOLDER/rest/v1/keys?key=eq." .. entered_key
                     http:Patch(patch_url, headers, '{"is_used": true}', function(p_success, p_resp) end, 10)
                 else
@@ -154,7 +153,6 @@ end
 @bot.message_handler(commands=['start'])
 def start(msg):
     if not is_admin(msg): return
-    
     ui_text = (
         "🌟 <b>SAMMODZZ CYBER BOT v16.0</b> 🌟\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
@@ -162,7 +160,7 @@ def start(msg):
         "⚡ <b>Engine:</b> Supabase + Lua\n\n"
         "📥 <b>Kaise use karein?</b>\n"
         "👉 Koi bhi <code>.lua</code> file bhejein.\n"
-        "👉 Bot aapko features dikhayega.\n"
+        "👉 Bot aapse details puchega.\n"
         "👉 Select karein aur Build dabayein!\n\n"
         "🛠️ <i>Admin Panel ke liye /admin likhein.</i>"
     )
@@ -171,7 +169,6 @@ def start(msg):
 @bot.message_handler(commands=['admin'])
 def admin_panel(msg):
     if not is_admin(msg): return
-    
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(
         types.InlineKeyboardButton("🔑 Generate Key", callback_data="admin_gen"),
@@ -200,13 +197,16 @@ def handle_admin_callbacks(call):
     if action == "gen":
         try:
             new_key = f"SAMMODZZ-VIP-{''.join(random.choices(string.ascii_uppercase + string.digits, k=8))}"
-            supabase.table('keys').insert({"key": new_key, "is_used": False}).execute()
-            bot.send_message(call.message.chat.id, f"✅ <b>Key Generated Successfully!</b>\n\n🔑 Key: <code>{new_key}</code>\n\nIs key ko user ko de dein.", parse_mode="HTML")
+            res = supabase.table('keys').insert({"key": new_key, "is_used": False}).execute()
+            if res.data:
+                bot.send_message(call.message.chat.id, f"✅ <b>Key Generated Successfully!</b>\n\n🔑 Key: <code>{new_key}</code>", parse_mode="HTML")
+            else:
+                bot.send_message(call.message.chat.id, "❌ Key insert failed. Check Supabase table schema.")
         except Exception as e:
-            bot.send_message(call.message.chat.id, f"❌ Error: {e}")
+            bot.send_message(call.message.chat.id, f"❌ Supabase Error: {e}")
 
     elif action == "renew":
-        msg = bot.send_message(call.message.chat.id, "🔄 Kripya <b>Key</b> bhejein jo renew karni hai:", parse_mode="HTML")
+        msg = bot.send_message(call.message.chat.id, "🔄 Kripya <b>Key</b> bhejein jo renew karni hai:")
         bot.register_next_step_handler(msg, process_renew_key)
 
     elif action == "bypass":
@@ -223,14 +223,7 @@ def handle_admin_callbacks(call):
             total = len(res.data)
             used = len([k for k in res.data if k.get('is_used')])
             unused = total - used
-            stats_text = (
-                "📊 <b>SYSTEM STATISTICS</b>\n"
-                "━━━━━━━━━━━━━━━━━━━━\n"
-                f"📦 <b>Total Keys:</b> {total}\n"
-                f"✅ <b>Used Keys:</b> {used}\n"
-                f"💎 <b>Available Keys:</b> {unused}\n"
-                "━━━━━━━━━━━━━━━━━━━━"
-            )
+            stats_text = f"📊 <b>SYSTEM STATISTICS</b>\n━━━━━━━━━━━━━━━━━━━━\n📦 <b>Total Keys:</b> {total}\n✅ <b>Used:</b> {used}\n💎 <b>Available:</b> {unused}"
             bot.send_message(call.message.chat.id, stats_text, parse_mode="HTML")
         except Exception as e:
             bot.send_message(call.message.chat.id, f"❌ Error: {e}")
@@ -270,7 +263,7 @@ def process_update_offset(message):
         bot.reply_to(message, f"❌ Error: {e}")
 
 # ============================================================
-# MAIN FLOW: FILE UPLOAD & BUILD
+# WIZARD FLOW (Branding, Version, Bypass, KeySystem)
 # ============================================================
 @bot.message_handler(content_types=['document'])
 def handle_doc(msg):
@@ -289,12 +282,52 @@ def handle_doc(msg):
                 
             features = detect_features(content)
             user_states[msg.chat.id] = {
-                "filepath": dest, "filename": filename, "features": features, "selected": {f: True for f in features}
+                "filepath": dest, "filename": filename, "features": features, "selected": {f: True for f in features}, "step": "ask_branding"
             }
-            show_feature_menu(msg.chat.id)
+            
+            bot.reply_to(msg, "📜 <b>Script Received:</b> " + filename + "\n\n<b>Step 1/4:</b> Apni <b>Branding Name</b> likhein (jaise: Masterpiece):", parse_mode="HTML", reply_markup=types.ForceReply(selective=True))
     except Exception as e:
         bot.reply_to(msg, "❌ Error: " + str(e))
 
+@bot.message_handler(func=lambda msg: msg.chat.id in user_states and "step" in user_states[msg.chat.id])
+def wizard_steps(msg):
+    chat_id = msg.chat.id
+    state = user_states[chat_id]
+    step = state.get("step")
+    text = msg.text
+
+    if step == "ask_branding":
+        state["branding"] = text
+        state["step"] = "ask_version"
+        bot.reply_to(msg, "<b>Step 2/4:</b> Game ka <b>Version</b> likhein (jaise: 4.6):", parse_mode="HTML", reply_markup=types.ForceReply(selective=True))
+
+    elif step == "ask_version":
+        state["version"] = text
+        state["step"] = "ask_bypass"
+        markup = types.InlineKeyboardMarkup(row_width=2)
+        markup.add(types.InlineKeyboardButton("✅ Haan", callback_data="wiz_bypass_yes"), types.InlineKeyboardButton("❌ Nahi", callback_data="wiz_bypass_no"))
+        bot.reply_to(msg, "<b>Step 3/4:</b> Kya aap is script me <b>Bypass</b> lagana chahte hain?", parse_mode="HTML", reply_markup=markup)
+
+    elif step == "ask_keysystem":
+        state["use_keysystem"] = (text.lower() == "haan" or text.lower() == "yes")
+        state["step"] = "feature_menu"
+        show_feature_menu(chat_id)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("wiz_bypass_"))
+def cb_wizard_bypass(call):
+    chat_id = call.message.chat.id
+    if chat_id not in user_states: return
+    
+    state = user_states[chat_id]
+    state["use_bypass"] = (call.data == "wiz_bypass_yes")
+    state["step"] = "ask_keysystem"
+    
+    bot.edit_message_reply_markup(chat_id, call.message.message_id, reply_markup=None)
+    bot.send_message(chat_id, "<b>Step 4/4:</b> Kya aap <b>Key System</b> add karna chahte hain? (Haan/Nahi):", parse_mode="HTML", reply_markup=types.ForceReply(selective=True))
+
+# ============================================================
+# FEATURE MENU & BUILD
+# ============================================================
 def show_feature_menu(chat_id):
     state = user_states.get(chat_id)
     if not state: return
@@ -308,7 +341,6 @@ def show_feature_menu(chat_id):
         "🔍 <b>FEATURE DETECTOR</b>\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
         f"📁 <b>File:</b> <code>{state['filename']}</code>\n\n"
-        "🤖 Bot ne yeh features dhoondhe hain:\n"
         "✅ = ON | ❌ = OFF\n\n"
         "👇 <i>Toggle karne ke liye click karein:</i>"
     )
@@ -335,14 +367,7 @@ def cb_build_final(call):
     if chat_id not in user_states: return
     bot.answer_callback_query(call.id)
     
-    building_text = (
-        "⚙️ <b>BUILDING FILE...</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        "🔄 Bypass inject ho raha hai...\n"
-        "🔑 Key System add ho raha hai...\n"
-        "⚡ Features apply ho rahe hain...\n\n"
-        "⏳ <i>Kripya pratiksha karein...</i>"
-    )
+    building_text = "⚙️ <b>BUILDING FILE...</b>\n━━━━━━━━━━━━━━━━━━━━\n🔄 Bypass inject ho raha hai...\n🔑 Key System add ho raha hai...\n⚡ Features apply ho rahe hain..."
     bot.edit_message_text(chat_id=chat_id, message_id=call.message.message_id, text=building_text, parse_mode="HTML")
     
     state = user_states[chat_id]
@@ -350,8 +375,11 @@ def cb_build_final(call):
         with open(state['filepath'], 'r', encoding='utf-8') as f:
             content = f.read()
             
-        content = inject_safe_bypass(content)
+        # Apply Bypass if selected
+        if state.get("use_bypass", True):
+            content = inject_safe_bypass(content)
             
+        # Apply Feature Config
         config_code = "-- ==========================================\n"
         config_code += "-- USER FEATURE CONFIGURATION\n"
         config_code += "-- ==========================================\n"
@@ -361,20 +389,30 @@ def cb_build_final(call):
         config_code += "_G.SZ.ESP = _G.SZ.ESP or {}\n"
         config_code += f"_G.SZ.ESP.Master = {'true' if state['selected'].get('ESP / Wallhack', False) else 'false'}\n"
         
-        key_system = get_key_system()
-        new_content = config_code + "\n\n" + key_system + "\n\n" + content
+        # Apply Key System if selected
+        if state.get("use_keysystem", True):
+            key_system = get_key_system()
+            content = config_code + "\n\n" + key_system + "\n\n" + content
+        else:
+            content = config_code + "\n\n" + content
+            
+        # Add Branding & Version comments
+        header = f"-- ==========================================\n-- BRANDING: {state.get('branding', 'Unknown')}\n-- VERSION: {state.get('version', 'Unknown')}\n-- ==========================================\n"
+        content = header + content
         
         final_path = SCRIPTS + "Final_" + state['filename']
         with open(final_path, 'w', encoding='utf-8') as f:
-            f.write(new_content)
+            f.write(content)
             
         with open(final_path, 'rb') as f:
             caption = (
                 "✅ <b>BUILD COMPLETE!</b> ✅\n"
                 "━━━━━━━━━━━━━━━━━━━━\n"
                 f"📦 <b>File:</b> <code>Final_{state['filename']}</code>\n"
-                "🛡️ <b>Bypass:</b> Injected\n"
-                "🔑 <b>Key System:</b> Supabase Online\n\n"
+                f"🏷 <b>Branding:</b> {state.get('branding')}\n"
+                f"🎮 <b>Version:</b> {state.get('version')}\n"
+                f"🛡️ <b>Bypass:</b> {'ON' if state.get('use_bypass') else 'OFF'}\n"
+                f"🔑 <b>Key System:</b> {'ON' if state.get('use_keysystem') else 'OFF'}\n\n"
                 "🚀 <i>Script ready to use!</i>"
             )
             bot.send_document(chat_id, f, caption=caption, parse_mode="HTML")
@@ -386,5 +424,5 @@ def cb_build_final(call):
     del user_states[chat_id]
 
 if __name__ == "__main__":
-    print("Bot starting with Premium UI...")
+    print("Bot starting with Wizard & Premium UI...")
     bot.infinity_polling()
