@@ -215,13 +215,17 @@ def process_expiry(msg, expiry):
 @bot.callback_query_handler(func=lambda c: c.data == "build")
 def cb_build(call):
     bot.answer_callback_query(call.id)
-    scripts = [f for f in os.listdir(SCRIPTS) if f.endswith(".lua") and not f.startswith("TEMP_")]
-    if not scripts: return bot.send_message(call.message.chat.id, "❌ No scripts.")
-    markup = types.InlineKeyboardMarkup(row_width=1)
-    for s in scripts:
-        markup.add(types.InlineKeyboardButton(s, callback_data=f"build_sel:{s}"))
-    bot.send_message(call.message.chat.id, "🔨 <b>Select Script:</b>", parse_mode="HTML", reply_markup=markup)
-
+    try:
+        # Supabase se files list karo
+        files = supabase.storage.from_("scripts").list()
+        scripts = [f["name"] for f in files if f["name"].endswith(".lua") and not f["name"].startswith("TEMP_") and f["name"] != "master_bypass.lua"]
+        if not scripts: return bot.send_message(call.message.chat.id, "❌ No scripts found in Supabase.")
+        markup = types.InlineKeyboardMarkup(row_width=1)
+        for s in scripts:
+            markup.add(types.InlineKeyboardButton(s, callback_data=f"build_sel:{s}"))
+        bot.send_message(call.message.chat.id, "🔨 <b>Select Script:</b>", parse_mode="HTML", reply_markup=markup)
+    except Exception as e:
+        bot.send_message(call.message.chat.id, f"❌ Supabase Error: {e}")
 @bot.callback_query_handler(func=lambda c: c.data.startswith("build_sel:"))
 def cb_build_sel(call):
     bot.answer_callback_query(call.id)
