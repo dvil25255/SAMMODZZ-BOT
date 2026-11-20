@@ -148,24 +148,8 @@ end
     return lua
 
 # ============================================================
-# PREMIUM UI & COMMANDS
+# ADMIN PANEL (FULLY WORKING)
 # ============================================================
-@bot.message_handler(commands=['start'])
-def start(msg):
-    if not is_admin(msg): return
-    ui_text = (
-        "🌟 <b>SAMMODZZ CYBER BOT v16.0</b> 🌟\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        "🟢 <b>Status:</b> Online\n"
-        "⚡ <b>Engine:</b> Supabase + Lua\n\n"
-        "📥 <b>Kaise use karein?</b>\n"
-        "👉 Koi bhi <code>.lua</code> file bhejein.\n"
-        "👉 Bot aapse details puchega.\n"
-        "👉 Select karein aur Build dabayein!\n\n"
-        "🛠️ <i>Admin Panel ke liye /admin likhein.</i>"
-    )
-    bot.send_message(msg.chat.id, ui_text, parse_mode="HTML")
-
 @bot.message_handler(commands=['admin'])
 def admin_panel(msg):
     if not is_admin(msg): return
@@ -201,9 +185,9 @@ def handle_admin_callbacks(call):
             if res.data:
                 bot.send_message(call.message.chat.id, f"✅ <b>Key Generated Successfully!</b>\n\n🔑 Key: <code>{new_key}</code>", parse_mode="HTML")
             else:
-                bot.send_message(call.message.chat.id, "❌ Key insert failed. Check Supabase table schema.")
+                bot.send_message(call.message.chat.id, "❌ Key insert failed. Supabase me 'keys' table check karein.")
         except Exception as e:
-            bot.send_message(call.message.chat.id, f"❌ Supabase Error: {e}")
+            bot.send_message(call.message.chat.id, f"❌ Supabase Error: {e}\n\nMake sure 'keys' table has columns: 'key' (text) and 'is_used' (bool).")
 
     elif action == "renew":
         msg = bot.send_message(call.message.chat.id, "🔄 Kripya <b>Key</b> bhejein jo renew karni hai:")
@@ -229,42 +213,62 @@ def handle_admin_callbacks(call):
             bot.send_message(call.message.chat.id, f"❌ Error: {e}")
 
 def process_renew_key(message):
+    if not message.text:
+        return bot.reply_to(message, "❌ Kripya sirf text (key) bhejein, file nahi.")
     key = message.text.strip()
     try:
         res = supabase.table('keys').update({"is_used": False}).eq("key", key).execute()
         if res.data:
-            bot.reply_to(message, f"✅ Key <code>{key}</code> successfully renew ho gayi!", parse_mode="HTML")
+            bot.reply_to(message, f"✅ Key <code>{key}</code> successfully renew ho gayi! Ab yeh use ho sakti hai.", parse_mode="HTML")
         else:
-            bot.reply_to(message, "❌ Key nahi mili database me.")
+            bot.reply_to(message, "❌ Key nahi mili database me. Spelling check karein.")
     except Exception as e:
         bot.reply_to(message, f"❌ Error: {e}")
 
 def process_update_bypass(message):
-    if not message.document: return bot.reply_to(message, "❌ Koi file nahi mili.")
+    if not message.document:
+        return bot.reply_to(message, "❌ Aapne file nahi bheji! Admin panel se dubara try karein.")
     try:
         file_info = bot.get_file(message.document.file_id)
         downloaded = bot.download_file(file_info.file_path)
         with open(BYPASS_DIR + "master_bypass.lua", "wb") as f: f.write(downloaded)
         upload_to_supabase(BYPASS_DIR + "master_bypass.lua", "master_bypass.lua")
-        bot.reply_to(message, "✅ <b>Bypass successfully update ho gaya!</b>", parse_mode="HTML")
+        bot.reply_to(message, "✅ <b>Bypass successfully update ho gaya!</b>\nAb har nayi file is bypass ke sath banegi.", parse_mode="HTML")
     except Exception as e:
         bot.reply_to(message, f"❌ Error: {e}")
 
 def process_update_offset(message):
-    if not message.document: return bot.reply_to(message, "❌ Koi file nahi mili.")
+    if not message.document:
+        return bot.reply_to(message, "❌ Aapne file nahi bheji! Admin panel se dubara try karein.")
     try:
         file_info = bot.get_file(message.document.file_id)
         downloaded = bot.download_file(file_info.file_path)
         filename = message.document.file_name
         with open(OFFSETS + filename, "wb") as f: f.write(downloaded)
         upload_to_supabase(OFFSETS + filename, filename)
-        bot.reply_to(message, "✅ <b>Offsets successfully update ho gaye!</b>", parse_mode="HTML")
+        bot.reply_to(message, f"✅ <b>Offsets ({filename}) successfully update ho gaye!</b>", parse_mode="HTML")
     except Exception as e:
         bot.reply_to(message, f"❌ Error: {e}")
 
 # ============================================================
-# WIZARD FLOW (Branding, Version, Bypass, KeySystem)
+# WIZARD FLOW & BUILD
 # ============================================================
+@bot.message_handler(commands=['start'])
+def start(msg):
+    if not is_admin(msg): return
+    ui_text = (
+        "🌟 <b>SAMMODZZ CYBER BOT v16.0</b> 🌟\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "🟢 <b>Status:</b> Online\n"
+        "⚡ <b>Engine:</b> Supabase + Lua\n\n"
+        "📥 <b>Kaise use karein?</b>\n"
+        "👉 Koi bhi <code>.lua</code> file bhejein.\n"
+        "👉 Bot aapse details puchega.\n"
+        "👉 Select karein aur Build dabayein!\n\n"
+        "🛠️ <i>Admin Panel ke liye /admin likhein.</i>"
+    )
+    bot.send_message(msg.chat.id, ui_text, parse_mode="HTML")
+
 @bot.message_handler(content_types=['document'])
 def handle_doc(msg):
     if not is_admin(msg): return
@@ -294,7 +298,7 @@ def wizard_steps(msg):
     chat_id = msg.chat.id
     state = user_states[chat_id]
     step = state.get("step")
-    text = msg.text
+    text = msg.text if msg.text else "None"
 
     if step == "ask_branding":
         state["branding"] = text
@@ -325,9 +329,6 @@ def cb_wizard_bypass(call):
     bot.edit_message_reply_markup(chat_id, call.message.message_id, reply_markup=None)
     bot.send_message(chat_id, "<b>Step 4/4:</b> Kya aap <b>Key System</b> add karna chahte hain? (Haan/Nahi):", parse_mode="HTML", reply_markup=types.ForceReply(selective=True))
 
-# ============================================================
-# FEATURE MENU & BUILD
-# ============================================================
 def show_feature_menu(chat_id):
     state = user_states.get(chat_id)
     if not state: return
@@ -375,11 +376,9 @@ def cb_build_final(call):
         with open(state['filepath'], 'r', encoding='utf-8') as f:
             content = f.read()
             
-        # Apply Bypass if selected
         if state.get("use_bypass", True):
             content = inject_safe_bypass(content)
             
-        # Apply Feature Config
         config_code = "-- ==========================================\n"
         config_code += "-- USER FEATURE CONFIGURATION\n"
         config_code += "-- ==========================================\n"
@@ -389,14 +388,12 @@ def cb_build_final(call):
         config_code += "_G.SZ.ESP = _G.SZ.ESP or {}\n"
         config_code += f"_G.SZ.ESP.Master = {'true' if state['selected'].get('ESP / Wallhack', False) else 'false'}\n"
         
-        # Apply Key System if selected
         if state.get("use_keysystem", True):
             key_system = get_key_system()
             content = config_code + "\n\n" + key_system + "\n\n" + content
         else:
             content = config_code + "\n\n" + content
             
-        # Add Branding & Version comments
         header = f"-- ==========================================\n-- BRANDING: {state.get('branding', 'Unknown')}\n-- VERSION: {state.get('version', 'Unknown')}\n-- ==========================================\n"
         content = header + content
         
@@ -424,5 +421,5 @@ def cb_build_final(call):
     del user_states[chat_id]
 
 if __name__ == "__main__":
-    print("Bot starting with Wizard & Premium UI...")
+    print("Bot starting with Premium UI & Working Admin Panel...")
     bot.infinity_polling()
