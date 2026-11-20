@@ -170,7 +170,7 @@ def handle_doc(msg):
                 upload_to_supabase(dest, "master_bypass.lua")
                 return bot.reply_to(msg, "✅ <b>Master Bypass Saved!</b>\nAb har script is safe bypass ke saath build hogi.", parse_mode="HTML")
 
-            dest = SCRIPTS + "TEMP_" + filename
+            dest = SCRIPTS + filename
             os.makedirs(os.path.dirname(dest), exist_ok=True)
             with open(dest, "wb") as f: f.write(downloaded)
             upload_to_supabase(dest, "TEMP_" + filename)
@@ -194,7 +194,6 @@ def handle_doc(msg):
             dest = OFFSETS + filename
             os.makedirs(os.path.dirname(dest), exist_ok=True)
             with open(dest, "wb") as f: f.write(downloaded)
-            upload_to_supabase(dest, filename)
             bot.reply_to(msg, f"🎯 <b>Offsets Uploaded:</b> {filename}", parse_mode="HTML")
     except Exception as e:
         bot.reply_to(msg, f"❌ Error: {e}")
@@ -216,16 +215,19 @@ def process_expiry(msg, expiry):
 def cb_build(call):
     bot.answer_callback_query(call.id)
     try:
-        # Supabase se files list karo
-        files = supabase.storage.from_("scripts").list()
-        scripts = [f["name"] for f in files if f["name"].endswith(".lua") and not f["name"].startswith("TEMP_") and f["name"] != "master_bypass.lua"]
-        if not scripts: return bot.send_message(call.message.chat.id, "❌ No scripts found in Supabase.")
+        scripts = [f for f in os.listdir(SCRIPTS) if f.endswith(".lua")]
+        if not scripts: 
+            return bot.send_message(call.message.chat.id, "❌ No scripts found in local folder.")
+            
         markup = types.InlineKeyboardMarkup(row_width=1)
         for s in scripts:
             markup.add(types.InlineKeyboardButton(s, callback_data=f"build_sel:{s}"))
+            
         bot.send_message(call.message.chat.id, "🔨 <b>Select Script:</b>", parse_mode="HTML", reply_markup=markup)
     except Exception as e:
-        bot.send_message(call.message.chat.id, f"❌ Supabase Error: {e}")
+        bot.send_message(call.message.chat.id, f"❌ Error: {e}")
+
+
 @bot.callback_query_handler(func=lambda c: c.data.startswith("build_sel:"))
 def cb_build_sel(call):
     bot.answer_callback_query(call.id)
