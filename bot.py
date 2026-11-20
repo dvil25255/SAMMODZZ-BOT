@@ -174,7 +174,7 @@ def admin_panel(msg):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("admin_"))
 def handle_admin_callbacks(call):
-    if not is_admin(call.message): return
+    if call.from_user.id != ADMIN_ID: return
     bot.answer_callback_query(call.id)
     action = call.data.split("_")[1]
 
