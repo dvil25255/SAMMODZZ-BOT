@@ -129,6 +129,26 @@ end
 # ============================================================
 # OBFUSCATION (Safe Variable Rename & Junk Code)
 # ============================================================
+
+# ============================================================
+# BYPASS TOGGLE SETTING
+# ============================================================
+@bot.message_handler(commands=['setbypass'])
+def toggle_bypass(message):
+    if not is_admin(message):
+        bot.reply_to(message, "❌ Aap admin nahi hain!")
+        return
+    
+    user_id = message.from_user.id
+    if user_id not in user_states:
+        user_states[user_id] = {}
+    
+    current = user_states[user_id].get('use_bypass', True)
+    user_states[user_id]['use_bypass'] = not current
+    
+    status = "✅ ON (Bypass lagayega)" if user_states[user_id]['use_bypass'] else "❌ OFF (Bypass nahi lagayega)"
+    bot.reply_to(message, f"🔄 Bypass status ab: {status}\n\nAb jo bhi file aap bhejoge, usme bypass {'lagaya jayega' if user_states[user_id]['use_bypass'] else 'nahi lagaya jayega'}.")
+
 def real_obfuscate(content):
     # 1. Rename only local variables to hide signatures
     mapping = {}
@@ -154,6 +174,9 @@ def real_obfuscate(content):
 # ============================================================
 @bot.message_handler(content_types=['document'])
 def handle_doc(msg):
+    # User ki bypass choice check karo
+    if user_states.get(message.from_user.id, {}).get('use_bypass', True):
+        content = inject_safe_bypass(content)
     if not is_admin(msg): return
     try:
         file_info = bot.get_file(msg.document.file_id)
