@@ -184,6 +184,8 @@ def handle_doc(msg):
             # Agar bypass file hai
             if "bypass" in filename.lower():
                 dest = BYPASS_DIR + "master_bypass.lua"
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
                 with open(dest, "wb") as f: f.write(downloaded)
                 return bot.reply_to(msg, "✅ <b>Master Bypass Saved!</b>\nAb har script is safe bypass ke saath build hogi.", parse_mode="HTML")
             
@@ -193,8 +195,12 @@ def handle_doc(msg):
             if user_states.get(msg.from_user.id, {}).get("use_bypass", True):
                 with open(dest, "r", encoding="utf-8") as f: content = f.read()
                 content = inject_safe_bypass(content)
-                with open(dest, "w", encoding="utf-8") as f: f.write(content)
-            with open(dest, "wb") as f: f.write(downloaded)
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                    os.makedirs(os.path.dirname(dest), exist_ok=True)
+                    with open(dest, "w", encoding="utf-8") as f: f.write(content)
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                with open(dest, "wb") as f: f.write(downloaded)
             user_states[msg.chat.id] = {"filepath": dest, "filename": filename}
             
             markup = types.InlineKeyboardMarkup(row_width=3)
@@ -208,7 +214,9 @@ def handle_doc(msg):
             
         elif filename.endswith(".txt"):
             dest = OFFSETS + filename
-            with open(dest, "wb") as f: f.write(downloaded)
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                with open(dest, "wb") as f: f.write(downloaded)
             bot.reply_to(msg, f"🎯 <b>Offsets Uploaded:</b> {filename}", parse_mode="HTML")
     except Exception as e: 
         bot.reply_to(msg, f"❌ Error: {e}")
