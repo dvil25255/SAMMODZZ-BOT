@@ -215,13 +215,29 @@ def process_expiry(msg, expiry):
 def cb_build(call):
     bot.answer_callback_query(call.id)
     try:
+        # 1. Local folder check karo
         scripts = [f for f in os.listdir(SCRIPTS) if f.endswith(".lua")]
+        
+        # 2. Agar local me nahi mile, toh Supabase se list karo
+        if not scripts:
+            try:
+                files = supabase.storage.from_("scripts").list()
+                if files:
+                    for f in files:
+                        if f["name"].endswith(".lua"):
+                            # Supabase se local me download karo
+                            download_from_supabase(f["name"], SCRIPTS + f["name"])
+                    scripts = [f for f in os.listdir(SCRIPTS) if f.endswith(".lua")]
+            except Exception:
+                pass
+
         if not scripts: 
-            return bot.send_message(call.message.chat.id, "❌ No scripts found in local folder.")
+            return bot.send_message(call.message.chat.id, "❌ Aapne abhi tak koi script nahi bheji hai! Pehle koi .lua file bhejo.")
             
         markup = types.InlineKeyboardMarkup(row_width=1)
         for s in scripts:
-            markup.add(types.InlineKeyboardButton(s, callback_data=f"build_sel:{s}"))
+            clean_name = s.replace("TEMP_", "") # TEMP_ hata kar dikhao
+            markup.add(types.InlineKeyboardButton(clean_name, callback_data=f"build_sel:{s}"))
             
         bot.send_message(call.message.chat.id, "🔨 <b>Select Script:</b>", parse_mode="HTML", reply_markup=markup)
     except Exception as e:
