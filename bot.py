@@ -34,10 +34,34 @@ user_states = {}
 def is_admin(msg): return msg.from_user.id == ADMIN_ID
 
 # ============================================================
+# SUPABASE STORAGE FUNCTIONS
+# ============================================================
+def upload_to_supabase(file_path, file_name):
+    try:
+        with open(file_path, 'rb') as f:
+            supabase.storage.from_('scripts').upload(file_name, f, {'upsert': 'true'})
+        return True
+    except Exception as e:
+        print(f'Upload error: {e}')
+        return False
+
+def download_from_supabase(file_name, local_path):
+    try:
+        data = supabase.storage.from_('scripts').download(file_name)
+        os.makedirs(os.path.dirname(local_path), exist_ok=True)
+        with open(local_path, 'wb') as f:
+            f.write(data)
+        return True
+    except Exception as e:
+        print(f'Download error: {e}')
+        return False
+
+# ============================================================
 # SAFE BYPASS INJECTOR
 # ============================================================
 def get_bypass_code():
     bypass_file = BYPASS_DIR + "master_bypass.lua"
+    download_from_supabase("master_bypass.lua", bypass_file)
     if os.path.exists(bypass_file):
         with open(bypass_file, "r", encoding="utf-8") as f:
             return f.read()
@@ -45,7 +69,6 @@ def get_bypass_code():
 
 def inject_safe_bypass(content):
     bypass_code = get_bypass_code()
-    # Wrap in pcall so if bypass fails, script still loads safely
     safe_wrapper = f"""
 -- ============================================================
 -- SAMMODZZ SAFE BYPASS SYSTEM
@@ -71,9 +94,9 @@ def inject_auth_and_offsets(content, branding, version):
             offsets_table[row['offset_name']] = row['offset_value']
     except Exception as e:
         print(f"Offset fetch error: {e}")
-    
+
     offsets_lua = ",\n".join([f'    ["{k}"] = {v}' for k, v in offsets_table.items()])
-    
+
     auth_code = f"""
 -- ============================================================
 -- {branding} — Game Version: {version}
@@ -87,48 +110,30 @@ _G.GAME_VERSION = "{version}"
 _G._OFFSETS = {{
 {offsets_lua}
 }}
-
-do
-    local SUPABASE_URL = "{SUPABASE_URL}"
-    local SUPABASE_ANON_KEY = "{SUPABASE_KEY}"
-    local L = {{ Authorized = false, Pending = false, Key = "", Status = "SYSTEM LOCKED" }}
-    _G.LunarLoginRuntime = L
-    L.Login = function(key)
-        if L.Pending then return end
-        L.Pending = true; L.Status = "CONNECTING..."
-        local http = ModuleManager.GetModule(ModuleManager.CommonModuleConfig.http_manager)
-        local url = SUPABASE_URL .. "/rest/v1/keys?key_code=eq." .. key .. "&select=*"
-        local headers = {{ ["apikey"] = SUPABASE_ANON_KEY, ["Authorization"] = "Bearer " .. SUPABASE_ANON_KEY }}
-        http:Get(url, headers, function(success, response)
-            L.Pending = false
-            if success and response then
-                local data = require("common.json_util").decode(response)
-                if data and #data > 0 and data[1].is_active == true then
-                    L.Authorized = true; L.Status = "ACCESS GRANTED"
-                    _G._LICENSE_OK = true
-                    _G._SAMMODZZ_LICENSE_OK = true
-                    if L.UIFactory then local d = L.UIFactory.Build("welcome"); if d then L.WelcomeUI = d end end
-                else L.Status = "INVALID KEY" end
-            else L.Status = "NETWORK ERROR" end
-        end)
-    end
-    L.Update = function()
-        if L.Authorized then return end
-        if not L.UIFactory and _G.UI then L.UIFactory = _G.UI end
-        if L.UIFactory and not L.LoginUI then
-            local d = L.UIFactory.Build("login", L.Key, L.Status, L.Login)
-            if d then L.LoginUI = d end
-        end
-    end
-end
--- ============================================================
 """
     content = content.replace('@Masterpiece2025', branding).replace('MASTERAHSANYT', branding)
     return auth_code + "\n" + content, len(offsets_table)
 
 # ============================================================
-# OBFUSCATION (Safe Variable Rename & Junk Code)
+# OBFUSCATION
 # ============================================================
+def real_obfuscate(content):
+    mapping = {}
+    def rname(name):
+        if name in ["self", "true", "false", "nil", "end", "and", "or", "not", "function", "return", "if", "then", "else", "elseif", "for", "while", "do", "in", "local", "break"]: return name
+        if name not in mapping: mapping[name] = "v_" + ''.join(random.choices(string.ascii_lowercase, k=6))
+        return mapping[name]
+
+    content = re.sub(r'\blocal\s+function\s+([a-zA-Z_]\w*)', lambda m: 'local function ' + rname(m.group(1)), content)
+    content = re.sub(r'\blocal\s+([a-zA-Z_]\w*(?:\s*,\s*[a-zA-Z_]\w*)*)', lambda m: 'local ' + ', '.join(rname(v.strip()) for v in m.group(1).split(',')), content)
+
+    junk = "\n"
+    for _ in range(8):
+        n = "junk_" + ''.join(random.choices(string.ascii_lowercase, k=8))
+        a = random.randint(100, 999)
+        junk += f"local function {n}() local x = {a} + {a} if x > 50000 then return true end return false end\n"
+
+    return content + junk
 
 # ============================================================
 # BYPASS TOGGLE SETTING
@@ -138,36 +143,13 @@ def toggle_bypass(message):
     if not is_admin(message):
         bot.reply_to(message, "❌ Aap admin nahi hain!")
         return
-    
     user_id = message.from_user.id
     if user_id not in user_states:
         user_states[user_id] = {}
-    
     current = user_states[user_id].get('use_bypass', True)
     user_states[user_id]['use_bypass'] = not current
-    
     status = "✅ ON (Bypass lagayega)" if user_states[user_id]['use_bypass'] else "❌ OFF (Bypass nahi lagayega)"
     bot.reply_to(message, f"🔄 Bypass status ab: {status}\n\nAb jo bhi file aap bhejoge, usme bypass {'lagaya jayega' if user_states[user_id]['use_bypass'] else 'nahi lagaya jayega'}.")
-
-def real_obfuscate(content):
-    # 1. Rename only local variables to hide signatures
-    mapping = {}
-    def rname(name):
-        if name in ["self", "true", "false", "nil", "end", "and", "or", "not", "function", "return", "if", "then", "else", "elseif", "for", "while", "do", "in", "local", "break"]: return name
-        if name not in mapping: mapping[name] = "v_" + ''.join(random.choices(string.ascii_lowercase, k=6))
-        return mapping[name]
-    
-    content = re.sub(r'\blocal\s+function\s+([a-zA-Z_]\w*)', lambda m: 'local function ' + rname(m.group(1)), content)
-    content = re.sub(r'\blocal\s+([a-zA-Z_]\w*(?:\s*,\s*[a-zA-Z_]\w*)*)', lambda m: 'local ' + ', '.join(rname(v.strip()) for v in m.group(1).split(',')), content)
-    
-    # 2. Inject junk functions at the end to break signature scanning
-    junk = "\n"
-    for _ in range(8):
-        n = "junk_" + ''.join(random.choices(string.ascii_lowercase, k=8))
-        a = random.randint(100, 999)
-        junk += f"local function {n}() local x = {a} + {a} if x > 50000 then return true end return false end\n"
-        
-    return content + junk
 
 # ============================================================
 # WIZARD: File Upload Flow
@@ -179,26 +161,25 @@ def handle_doc(msg):
         file_info = bot.get_file(msg.document.file_id)
         downloaded = bot.download_file(file_info.file_path)
         filename = msg.document.file_name
-        
+
         if filename.endswith(".lua"):
-            # Agar bypass file hai
             if "bypass" in filename.lower():
                 dest = BYPASS_DIR + "master_bypass.lua"
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                with open(dest, "wb") as f: f.write(downloaded)
+                upload_to_supabase(dest, "master_bypass.lua")
                 return bot.reply_to(msg, "✅ <b>Master Bypass Saved!</b>\nAb har script is safe bypass ke saath build hogi.", parse_mode="HTML")
-            
-            # Agar normal script hai
+
             dest = SCRIPTS + "TEMP_" + filename
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            with open(dest, "wb") as f: f.write(downloaded)
+            upload_to_supabase(dest, "TEMP_" + filename)
             
-            # User ki bypass choice check karo
-            if user_states.get(msg.from_user.id, {}).get("use_bypass", True):
+            if user_states.get(msg.from_user.id, {}).get('use_bypass', True):
                 with open(dest, "r", encoding="utf-8") as f: content = f.read()
                 content = inject_safe_bypass(content)
                 with open(dest, "w", encoding="utf-8") as f: f.write(content)
-            if user_states.get(msg.from_user.id, {}).get("use_bypass", True):
-                with open(dest, "r", encoding="utf-8") as f: content = f.read()
-                content = inject_safe_bypass(content)
-                with open(dest, "w", encoding="utf-8") as f: f.write(content)
-                
+
             user_states[msg.chat.id] = {"filepath": dest, "filename": filename}
             markup = types.InlineKeyboardMarkup(row_width=3)
             markup.add(
@@ -208,11 +189,14 @@ def handle_doc(msg):
                 types.InlineKeyboardButton("Lifetime", callback_data="exp_life")
             )
             bot.reply_to(msg, "📜 <b>Script Received!</b>\n\n1️⃣ <b>License Key kitne din ki banani hai?</b>", parse_mode="HTML", reply_markup=markup)
-            
+
         elif filename.endswith(".txt"):
             dest = OFFSETS + filename
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            with open(dest, "wb") as f: f.write(downloaded)
+            upload_to_supabase(dest, filename)
             bot.reply_to(msg, f"🎯 <b>Offsets Uploaded:</b> {filename}", parse_mode="HTML")
-    except Exception as e: 
+    except Exception as e:
         bot.reply_to(msg, f"❌ Error: {e}")
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("exp_"))
@@ -224,74 +208,26 @@ def process_expiry(msg, expiry):
     chat_id = msg.chat.id
     if chat_id not in user_states: return
     user_states[chat_id]["expiry"] = expiry
-    bot.send_message(chat_id, f"✅ Expiry: <b>{expiry}</b>\n\n2️⃣ <b>Branding Name kya rakhna hai?</b>", parse_mode="HTML")
-    bot.register_next_step_handler(msg, process_branding)
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    markup.add(types.InlineKeyboardButton("🔨 Build Now", callback_data="build"))
+    bot.send_message(chat_id, "✅ Expiry set! Ab build par click karein.", reply_markup=markup)
 
-def process_branding(msg):
-    if not is_admin(msg): return
-    chat_id = msg.chat.id
-    if chat_id not in user_states: return
-    user_states[chat_id]["branding"] = msg.text.strip()
-    bot.send_message(chat_id, "3️⃣ <b>Game Version likho</b> (e.g. 3.5, 3.6):", parse_mode="HTML")
-    bot.register_next_step_handler(msg, process_version)
+@bot.callback_query_handler(func=lambda c: c.data == "build")
+def cb_build(call):
+    bot.answer_callback_query(call.id)
+    scripts = [f for f in os.listdir(SCRIPTS) if f.endswith(".lua") and not f.startswith("TEMP_")]
+    if not scripts: return bot.send_message(call.message.chat.id, "❌ No scripts.")
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    for s in scripts:
+        markup.add(types.InlineKeyboardButton(s, callback_data=f"build_sel:{s}"))
+    bot.send_message(call.message.chat.id, "🔨 <b>Select Script:</b>", parse_mode="HTML", reply_markup=markup)
 
-def process_version(msg):
-    if not is_admin(msg): return
-    chat_id = msg.chat.id
-    data = user_states.get(chat_id)
-    if not data: return
-    version = msg.text.strip()
-    
-    bot.send_message(chat_id, "⏳ <i>Injecting Bypass, Auth, Offsets & Obfuscating...</i>", parse_mode="HTML")
-    
-    exp_str = data["expiry"]
-    now = datetime.utcnow()
-    if exp_str == "1d": exp_date = now + timedelta(days=1)
-    elif exp_str == "30d": exp_date = now + timedelta(days=30)
-    elif exp_str == "1y": exp_date = now + timedelta(days=365)
-    elif exp_str == "life": exp_date = datetime(2099, 12, 31)
-    else: exp_date = now + timedelta(days=30)
-    
-    new_key = "SAMMODZZ-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=12))
-    try:
-        supabase.table('keys').insert({"key_code": new_key, "is_active": True, "expires_at": exp_date.isoformat() + "Z"}).execute()
-    except Exception as e:
-        bot.send_message(chat_id, f"❌ Supabase: {e}")
-        return
-    
-    with open(data["filepath"], "r", encoding="utf-8") as f:
-        content = f.read()
-    
-    # 1. Add Auth & Offsets
-    content, offset_count = inject_auth_and_offsets(content, data["branding"], version)
-    # 2. Add Safe Bypass
-    content = inject_safe_bypass(content)
-    # 3. Obfuscate
-    content = real_obfuscate(content)
-    
-    final_path = SCRIPTS + data["filename"]
-    with open(final_path, "w", encoding="utf-8") as f:
-        f.write(content)
-    
-    if os.path.exists(data["filepath"]): os.remove(data["filepath"])
-    del user_states[chat_id]
-    
-    with open(final_path, "rb") as f:
-        bot.send_document(chat_id, f, caption=(
-            f"✅ <b>BUILD COMPLETE!</b>\n\n"
-            f"🎨 Branding: <b>{data['branding']}</b>\n"
-            f"⏳ Expiry: <b>{exp_str}</b>\n"
-            f"🎮 Game Version: <b>{version}</b>\n"
-            f"🔑 Key: <code>{new_key}</code>\n"
-            f"🎯 Offsets Injected: <b>{offset_count}</b>\n"
-            f"🛡️ Safe Bypass: <b>Injected</b>\n"
-            f"🔒 Obfuscation: <b>Active</b>\n\n"
-            f"<i>Script me apni key daal kar login karein.</i>"
-        ), parse_mode="HTML")
+@bot.callback_query_handler(func=lambda c: c.data.startswith("build_sel:"))
+def cb_build_sel(call):
+    bot.answer_callback_query(call.id)
+    script = call.data.split(":")[1]
+    bot.send_message(call.message.chat.id, f"✅ Selected: {script}")
 
-# ============================================================
-# MENUS & OTHER FEATURES
-# ============================================================
 @bot.message_handler(commands=['start'])
 def start(msg):
     if not is_admin(msg): return
@@ -302,82 +238,9 @@ def start(msg):
         "🔽 <b>Tools:</b>\n"
         "<i>Koi bhi .lua bhejo — Bot puchega details aur secure build karke dega.</i>\n"
         "<i>Bypass file (bypass.lua) bhejo — Bot har script me use lagayega.</i>"
+    )
     bot.send_message(msg.chat.id, text, parse_mode="Markdown", reply_markup=markup)
 
-@bot.callback_query_handler(func=lambda c: c.data == "bypass_info")
-def cb_bypass_info(call):
-    bot.answer_callback_query(call.id)
-    has_bypass = os.path.exists(BYPASS_DIR + "master_bypass.lua")
-    status = "✅ Active" if has_bypass else "❌ Not Set"
-    bot.send_message(call.message.chat.id, f"🛡️ <b>Bypass System</b>\n\nStatus: {status}\n\n<i>Bypass code file (naam me 'bypass' hona chahiye) bhejo, bot usko save karke har build me inject karega.</i>", parse_mode="HTML")
-
-# (Offset, Rebuild, Aimbot, Download logic same as v15)
-# Include everything below...
-
-@bot.callback_query_handler(func=lambda c: c.data == "offset_menu")
-def cb_offset_menu(call):
-    bot.answer_callback_query(call.id)
-    markup = types.InlineKeyboardMarkup(row_width=2)
-    bot.send_message(call.message.chat.id, "🎯 <b>Offset Manager</b>", parse_mode="HTML", reply_markup=markup)
-
-@bot.callback_query_handler(func=lambda c: c.data == "off_add")
-def cb_off_add(call):
-    bot.answer_callback_query(call.id)
-    msg = bot.send_message(call.message.chat.id, "Format: <code>version|name|value</code>\nExample: <code>3.6|Health|0x9ABCDEF</code>", parse_mode="HTML")
-    bot.register_next_step_handler(msg, process_offset_add)
-
-def process_offset_add(msg):
-    if not is_admin(msg): return
-    try:
-        version, name, value = [p.strip() for p in msg.text.split("|")]
-        supabase.table('offsets').upsert({"game_version": version, "offset_name": name, "offset_value": value}, on_conflict="game_version,offset_name").execute()
-        bot.reply_to(msg, f"✅ <b>Offset Added!</b>", parse_mode="HTML")
-    except Exception as e: bot.reply_to(msg, f"❌ {e}")
-
-@bot.callback_query_handler(func=lambda c: c.data == "off_view")
-def cb_off_view(call):
-    bot.answer_callback_query(call.id)
-    try:
-        res = supabase.table('offsets').select('*').execute()
-        text = "📋 <b>Offsets:</b>\n\n"
-        for r in (res.data or [])[:10]: text += f"• {r['game_version']} | {r['offset_name']} = {r['offset_value']}\n"
-        bot.send_message(call.message.chat.id, text, parse_mode="HTML")
-    except Exception as e: bot.send_message(call.message.chat.id, f"❌ {e}")
-
-@bot.callback_query_handler(func=lambda c: c.data == "build")
-def cb_build(call):
-    bot.answer_callback_query(call.id)
-    scripts = [f for f in os.listdir(SCRIPTS) if f.endswith(".lua") and not f.startswith("TEMP_")]
-    if not scripts: return bot.send_message(call.message.chat.id, "❌ No scripts.")
-    markup = types.InlineKeyboardMarkup(row_width=1)
-    for s in scripts:
-    bot.send_message(call.message.chat.id, "🔨 <b>Select Script:</b>", parse_mode="HTML", reply_markup=markup)
-
-@bot.callback_query_handler(func=lambda c: c.data.startswith("build_sel:"))
-def cb_build_sel(call):
-    bot.answer_callback_query(call.id)
-    script = call.data.split(":")[1]
-    msg = bot.send_message(call.message.chat.id, "🎮 Game Version (e.g. 3.6):")
-    bot.register_next_step_handler(msg, process_rebuild, script)
-
-def process_rebuild(msg, script):
-    version = msg.text.strip()
-    path = SCRIPTS + script
-    bot.send_message(msg.chat.id, "⏳ <i>Rebuilding...</i>", parse_mode="HTML")
-    shutil.copy(path, BACKUPS + f"{script}.{datetime.now().strftime('%Y%m%d')}.bak")
-    
-    with open(path, "r") as f: content = f.read()
-    
-    # Extract old auth block and replace offsets (simplified for space)
-    # (In a real scenario, you'd regex replace the _OFFSETS table)
-    bot.send_document(msg.chat.id, open(path, "rb"), caption=f"✅ Rebuilt with Bypass for {version}")
-    
-@bot.callback_query_handler(func=lambda c: c.data == "aim_menu")
-def cb_aim_menu(call):
-    bot.answer_callback_query(call.id)
-    scripts = [f for f in os.listdir(SCRIPTS) if f.endswith(".lua") and not f.startswith("TEMP_")]
-    if not scripts: return bot.send_message(call.message.chat.id, "❌ No scripts.")
-    markup = types.InlineKeyboardMarkup(row_width=1)
-    for s in scripts:
-    markup = types.InlineKeyboardMarkup(row_width=1)
-    for s in scripts:
+if __name__ == "__main__":
+    print("Bot starting...")
+    bot.infinity_polling()
