@@ -1,11 +1,11 @@
 import telebot
 from telebot import types
-import os, json, shutil, random, string, re
+import os, json, shutil, random, string, re, traceback
 from datetime import datetime, timedelta
 from supabase import create_client, Client
 
 # ============================================================
-# CONFIGURATION (Environment Variables)
+# CONFIGURATION
 # ============================================================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "123456789"))
@@ -21,20 +21,17 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 BASE = "./SAMMODZZ/"
 SCRIPTS = BASE + "scripts/"
 OFFSETS = BASE + "offsets/"
-BACKUPS = BASE + "backups/"
-LOGS = BASE + "logs/"
 BYPASS_DIR = BASE + "bypass/"
-for d in [SCRIPTS, OFFSETS, BACKUPS, LOGS, BYPASS_DIR]:
+for d in [SCRIPTS, OFFSETS, BYPASS_DIR]:
     os.makedirs(d, exist_ok=True)
 
-# Bot Initialize
 bot = telebot.TeleBot(BOT_TOKEN)
 user_states = {}
 
 def is_admin(msg): return msg.from_user.id == ADMIN_ID
 
 # ============================================================
-# SUPABASE STORAGE & BYPASS
+# SUPABASE FUNCTIONS
 # ============================================================
 def upload_to_supabase(file_path, file_name):
     try:
@@ -63,6 +60,9 @@ def get_bypass_code():
             return f.read()
     return "-- No custom bypass provided\n"
 
+# ============================================================
+# LUA INJECTORS
+# ============================================================
 def inject_safe_bypass(content):
     bypass_code = get_bypass_code()
     safe_wrapper = "-- ============================================================\n"
@@ -77,13 +77,10 @@ def inject_safe_bypass(content):
     safe_wrapper += "-- ============================================================\n"
     return safe_wrapper + "\n" + content
 
-# ============================================================
-# FEATURE DETECTOR & KEY SYSTEM
-# ============================================================
 def detect_features(content):
     features = []
     text = content.lower()
-    if "aimbot" in text or "aim " in text or "aim/" in text: features.append("Aimbot")
+    if "aimbot" in text or "aim " in text: features.append("Aimbot")
     if "esp" in text or "wallhack" in text or "chams" in text: features.append("ESP / Wallhack")
     if "skin" in text or "outfit" in text: features.append("Skins")
     if "car" in text or "vehicle" in text: features.append("Vehicle Hacks")
@@ -126,6 +123,10 @@ function _G.MasterLicenseLogin(entered_key)
                 if row.is_used == false or row.is_used == nil then
                     _G.LunarLoginRuntime.Authorized = true
                     _G.LunarLoginRuntime.Status = "Login Success! Welcome VIP."
+                    
+                    -- Mark as used
+                    local patch_url = "SUPABASE_URL_PLACEHOLDER/rest/v1/keys?key=eq." .. entered_key
+                    http:Patch(patch_url, headers, '{"is_used": true}', function(p_success, p_resp) end, 10)
                 else
                     _G.LunarLoginRuntime.Status = "Key already used!"
                 end
@@ -148,22 +149,101 @@ end
     return lua
 
 # ============================================================
-# TELEGRAM HANDLERS
+# ADMIN PANEL & COMMANDS
+# ============================================================
+@bot.message_handler(commands=['admin'])
+def admin_panel(msg):
+    if not is_admin(msg): return
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        types.InlineKeyboardButton("🔑 Generate Key", callback_data="admin_gen"),
+        types.InlineKeyboardButton("🔄 Renew Key", callback_data="admin_renew")
+    )
+    markup.add(
+        types.InlineKeyboardButton("🛡️ Update Bypass", callback_data="admin_bypass"),
+        types.InlineKeyboardButton("🎯 Update Offsets", callback_data="admin_offset")
+    )
+    markup.add(types.InlineKeyboardButton("📊 System Stats", callback_data="admin_stats"))
+    
+    bot.send_message(msg.chat.id, "👑 <b>ADMIN CONTROL PANEL</b>\n\nChunein ki aapko kya karna hai:", parse_mode="HTML", reply_markup=markup)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_"))
+def handle_admin_callbacks(call):
+    if not is_admin(call.message): return
+    bot.answer_callback_query(call.id)
+    action = call.data.split("_")[1]
+
+    if action == "gen":
+        try:
+            new_key = f"SAMMODZZ-VIP-{''.join(random.choices(string.ascii_uppercase + string.digits, k=8))}"
+            supabase.table('keys').insert({"key": new_key, "is_used": False}).execute()
+            bot.send_message(call.message.chat.id, f"✅ <b>Key Generated:</b>\n<code>{new_key}</code>", parse_mode="HTML")
+        except Exception as e:
+            bot.send_message(call.message.chat.id, f"❌ Error: {e}")
+
+    elif action == "renew":
+        msg = bot.send_message(call.message.chat.id, "🔄 Kripya <b>Key</b> bhejein jo renew karni hai:", parse_mode="HTML")
+        bot.register_next_step_handler(msg, process_renew_key)
+
+    elif action == "bypass":
+        msg = bot.send_message(call.message.chat.id, "🛡️ Kripya nayi <b>Bypass (.lua)</b> file bhejein:")
+        bot.register_next_step_handler(msg, process_update_bypass)
+
+    elif action == "offset":
+        msg = bot.send_message(call.message.chat.id, "🎯 Kripya nayi <b>Offsets (.txt)</b> file bhejein:")
+        bot.register_next_step_handler(msg, process_update_offset)
+
+    elif action == "stats":
+        try:
+            res = supabase.table('keys').select('*').execute()
+            total = len(res.data)
+            used = len([k for k in res.data if k.get('is_used')])
+            unused = total - used
+            bot.send_message(call.message.chat.id, f"📊 <b>System Stats</b>\n\nTotal Keys: {total}\nUsed: {used}\nAvailable: {unused}", parse_mode="HTML")
+        except Exception as e:
+            bot.send_message(call.message.chat.id, f"❌ Error: {e}")
+
+def process_renew_key(message):
+    key = message.text.strip()
+    try:
+        res = supabase.table('keys').update({"is_used": False}).eq("key", key).execute()
+        if res.data:
+            bot.reply_to(message, f"✅ Key <code>{key}</code> successfully renew ho gayi!", parse_mode="HTML")
+        else:
+            bot.reply_to(message, "❌ Key nahi mili database me.")
+    except Exception as e:
+        bot.reply_to(message, f"❌ Error: {e}")
+
+def process_update_bypass(message):
+    if not message.document: return bot.reply_to(message, "❌ Koi file nahi mili.")
+    try:
+        file_info = bot.get_file(message.document.file_id)
+        downloaded = bot.download_file(file_info.file_path)
+        with open(BYPASS_DIR + "master_bypass.lua", "wb") as f: f.write(downloaded)
+        upload_to_supabase(BYPASS_DIR + "master_bypass.lua", "master_bypass.lua")
+        bot.reply_to(message, "✅ Bypass successfully update ho gaya!")
+    except Exception as e:
+        bot.reply_to(message, f"❌ Error: {e}")
+
+def process_update_offset(message):
+    if not message.document: return bot.reply_to(message, "❌ Koi file nahi mili.")
+    try:
+        file_info = bot.get_file(message.document.file_id)
+        downloaded = bot.download_file(file_info.file_path)
+        filename = message.document.file_name
+        with open(OFFSETS + filename, "wb") as f: f.write(downloaded)
+        upload_to_supabase(OFFSETS + filename, filename)
+        bot.reply_to(message, "✅ Offsets successfully update ho gaye!")
+    except Exception as e:
+        bot.reply_to(message, f"❌ Error: {e}")
+
+# ============================================================
+# MAIN FLOW: FILE UPLOAD & BUILD
 # ============================================================
 @bot.message_handler(commands=['start'])
 def start(msg):
     if not is_admin(msg): return
-    bot.send_message(msg.chat.id, "✅ Bot is Online. Send a .lua file to start.")
-
-@bot.message_handler(commands=['setbypass'])
-def toggle_bypass(message):
-    if not is_admin(message): return
-    user_id = message.from_user.id
-    if user_id not in user_states: user_states[user_id] = {}
-    current = user_states[user_id].get('use_bypass', True)
-    user_states[user_id]['use_bypass'] = not current
-    status = "✅ ON" if user_states[user_id]['use_bypass'] else "❌ OFF"
-    bot.reply_to(message, f"🔄 Bypass status: {status}")
+    bot.send_message(msg.chat.id, "✅ Bot is Online. Send a .lua file to start. Type /admin for controls.")
 
 @bot.message_handler(content_types=['document'])
 def handle_doc(msg):
@@ -174,17 +254,8 @@ def handle_doc(msg):
         filename = msg.document.file_name
 
         if filename.endswith(".lua"):
-            if "bypass" in filename.lower():
-                dest = BYPASS_DIR + "master_bypass.lua"
-                os.makedirs(os.path.dirname(dest), exist_ok=True)
-                with open(dest, "wb") as f: f.write(downloaded)
-                upload_to_supabase(dest, "master_bypass.lua")
-                return bot.reply_to(msg, "✅ Master Bypass Saved!")
-
             dest = SCRIPTS + filename
-            os.makedirs(os.path.dirname(dest), exist_ok=True)
             with open(dest, "wb") as f: f.write(downloaded)
-            upload_to_supabase(dest, filename)
             
             with open(dest, "r", encoding="utf-8", errors="ignore") as f:
                 content = f.read()
@@ -194,12 +265,6 @@ def handle_doc(msg):
                 "filepath": dest, "filename": filename, "features": features, "selected": {f: True for f in features}
             }
             show_feature_menu(msg.chat.id)
-
-        elif filename.endswith(".txt"):
-            dest = OFFSETS + filename
-            os.makedirs(os.path.dirname(dest), exist_ok=True)
-            with open(dest, "wb") as f: f.write(downloaded)
-            bot.reply_to(msg, "🎯 <b>Offsets Uploaded:</b> " + filename, parse_mode="HTML")
     except Exception as e:
         bot.reply_to(msg, "❌ Error: " + str(e))
 
@@ -240,8 +305,7 @@ def cb_build_final(call):
         with open(state['filepath'], 'r', encoding='utf-8') as f:
             content = f.read()
             
-        if user_states.get(chat_id, {}).get('use_bypass', True):
-            content = inject_safe_bypass(content)
+        content = inject_safe_bypass(content)
             
         config_code = "-- ==========================================\n"
         config_code += "-- USER FEATURE CONFIGURATION\n"
@@ -267,32 +331,6 @@ def cb_build_final(call):
         bot.send_message(chat_id, f"❌ Error: {e}")
         
     del user_states[chat_id]
-
-# ============================================================
-# START BOT
-# ============================================================
-
-@bot.message_handler(commands=['genkey'])
-def generate_key(message):
-    if not is_admin(message): return
-    try:
-        # Random key generate karo (jaise VIP-X8F9A2K1)
-        random_str = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
-        new_key = f"SAMMODZZ-VIP-{random_str}"
-        
-        # Supabase me save karo
-        res = supabase.table('keys').insert({
-            "key": new_key,
-            "is_used": False
-        }).execute()
-        
-        if res.data:
-            bot.reply_to(message, f"✅ <b>Key Generated Successfully!</b>\n\n🔑 Key: <code>{new_key}</code>\n\nIs key ko user ko de dein.", parse_mode="HTML")
-        else:
-            bot.reply_to(message, "❌ Key save nahi hui. Check Supabase.")
-    except Exception as e:
-        bot.reply_to(message, f"❌ Error: {e}")
-
 
 if __name__ == "__main__":
     print("Bot starting...")
